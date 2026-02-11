@@ -3,10 +3,9 @@ import json
 import os
 from datetime import datetime, timezone
 
-import requests
+from extractors.instagram_public import extract_instagram_profile_posts
 
 def build_report_md(report: dict) -> str:
-    """Convierte el reporte JSON a Markdown simple."""
     meta = report.get("meta", {})
     profiles = report.get("profiles", [])
     top_posts = report.get("content", {}).get("top_posts", [])
@@ -21,8 +20,12 @@ def build_report_md(report: dict) -> str:
     for p in profiles:
         lines.append(f"### {p.get('platform','')} — {p.get('handle','')}")
         lines.append(f"- URL: {p.get('profile_url','')}")
-        lines.append(f"- Bio: {p.get('bio','')}")
-        lines.append(f"- Website: {p.get('website','')}")
+        bio = p.get("bio","")
+        if bio:
+            lines.append(f"- Bio: {bio}")
+        website = p.get("website","")
+        if website:
+            lines.append(f"- Website: {website}")
         avatar = p.get("avatar_url","")
         if avatar:
             lines.append(f"- Avatar: ![]({avatar})")
@@ -30,21 +33,17 @@ def build_report_md(report: dict) -> str:
 
     lines.append("## 2) Top posts (muestra)")
     if not top_posts:
-        lines.append("- (sin posts disponibles en MVP)")
+        lines.append("- (sin posts disponibles)")
     for post in top_posts:
-        lines.append(f"### Post — {post.get('post_id','')}")
+        lines.append(f"### Post")
         img = post.get("image_url","")
         if img:
             lines.append(f"![]({img})")
         lines.append(f"- URL: {post.get('post_url','')}")
-        lines.append(f"- Fecha: {post.get('published_at','')}")
-        lines.append(f"- Likes: {post.get('likes')} | Comments: {post.get('comments')}")
         lines.append(f"- Caption: {post.get('caption','')}")
         lines.append("")
 
     lines.append("## 3) Plan de acción (MVP)")
-    if not action_plan:
-        lines.append("- (pendiente)")
     for a in action_plan:
         lines.append(f"- **{a.get('priority','')}** — {a.get('title','')}")
         lines.append(f"  - Why: {a.get('why','')}")
@@ -55,52 +54,72 @@ def build_report_md(report: dict) -> str:
     return "\n".join(lines)
 
 def main():
-    # --------- Inputs (MVP) ----------
+    # -------- Inputs (MVP) --------
     platform = "instagram"
-    handle_or_url = "https://www.instagram.com/"  # cámbialo luego
+    handle_or_url = "instagram"  # pon aquí @handle o URL, ej: "lacarniceria" o "https://www.instagram.com/lacarniceria/"
     max_posts = 12
 
-    # --------- MVP: solo “esqueleto” ----------
-    # Nota: Instagram/TikTok/FB no dan datos completos sin APIs o scraping avanzado.
-    # Aquí creamos el pipeline y outputs estables desde ya.
-
     started = datetime.now(timezone.utc)
-    run_time_seconds = 0.0
+    t0 = datetime.now(timezone.utc)
 
     raw = {
         "platform": platform,
         "handle_or_url": handle_or_url,
         "max_posts": max_posts,
-        "note": "MVP skeleton (sin extracción real todavía)."
     }
+
+    # -------- Extract (PUBLIC MODE) --------
+    ig = extract_instagram_profile_posts(handle_or_url, max_posts=max_posts)
+
+    raw["instagram_public"] = ig
+
+    # -------- Build report --------
+    now = datetime.now(timezone.utc).isoformat()
+    run_time_seconds = (datetime.now(timezone.utc) - t0).total_seconds()
+
+    top_posts = []
+    for p in ig.get("posts", [])[:max_posts]:
+        top_posts.append({
+            "post_url": p.get("post_url",""),
+            "image_url": p.get("image_url",""),
+            "caption": p.get("caption",""),
+        })
 
     report = {
         "meta": {
             "platform": platform,
             "handle": handle_or_url,
-            "generated_at": started.isoformat(),
-            "run_time_seconds": run_time_seconds
+            "generated_at": now,
+            "run_time_seconds": round(run_time_seconds, 2)
         },
         "profiles": [
             {
                 "platform": platform,
                 "handle": handle_or_url,
-                "profile_url": handle_or_url,
+                "profile_url": ig.get("profile_url",""),
                 "bio": "",
                 "website": "",
                 "avatar_url": ""
             }
         ],
         "content": {
-            "top_posts": []
+            "top_posts": top_posts
         },
+        "warnings": ig.get("warnings", []),
         "action_plan": [
             {
                 "priority": "alta",
-                "title": "Define 3 pilares de contenido",
-                "why": "para que el feed sea consistente",
-                "how": "Producto / Promos / Behind-the-scenes",
-                "kpi": "posts por pilar/semana"
+                "title": "3 posts por semana (constancia)",
+                "why": "Instagram premia actividad constante y reduce caídas de alcance",
+                "how": "Calendario simple: Lun=producto, Mié=behind-the-scenes, Vie=promo",
+                "kpi": "3 posts/semana por 4 semanas"
+            },
+            {
+                "priority": "media",
+                "title": "Mejorar captions con CTA",
+                "why": "Más comentarios = más distribución",
+                "how": "Termina captions con pregunta (ej. “¿Cuál corte prefieres?”)",
+                "kpi": "comentarios/post +20%"
             }
         ]
     }

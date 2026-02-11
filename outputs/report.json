@@ -1,0 +1,30 @@
+{
+  "meta": {
+    "platform": "instagram",
+    "handle": "https://www.instagram.com/",
+    "generated_at": "2026-02-11T06:20:54.902372+00:00",
+    "run_time_seconds": 0.0
+  },
+  "profiles": [
+    {
+      "platform": "instagram",
+      "handle": "https://www.instagram.com/",
+      "profile_url": "https://www.instagram.com/",
+      "bio": "",
+      "website": "",
+      "avatar_url": ""
+    }
+  ],
+  "content": {
+    "top_posts": []
+  },
+  "action_plan": [
+    {
+      "priority": "alta",
+      "title": "Define 3 pilares de contenido",
+      "why": "para que el feed sea consistente",
+      "how": "Producto / Promos / Behind-the-scenes",
+      "kpi": "posts por pilar/semana"
+    }
+  ]
+}

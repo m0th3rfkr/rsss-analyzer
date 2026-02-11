@@ -37,11 +37,11 @@ def _auto_scroll(page, steps=6, pause_ms=900):
         except:
             pass
         page.wait_for_timeout(pause_ms)
-
+        
 def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile_dir: str) -> dict:
     """
     Extrae posts del perfil IG usando Playwright con un perfil persistente propio (NO tu Chrome real).
-    Mejorado: scroll + selectores más robustos.
+    Versión robusta: saca links via JS (document.querySelectorAll) en vez de locators frágiles.
     """
     profile_url = normalize_ig_profile(profile_url_or_handle)
 
@@ -63,9 +63,9 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
 
         # 1) Ir al perfil
         page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
-        page.wait_for_timeout(2000)
+        page.wait_for_timeout(2500)
 
-        # 2) Cerrar popups comunes (cookies/login overlays)
+        # 2) Cerrar popups comunes
         _try_click(page, [
             'button:has-text("Only allow essential cookies")',
             'button:has-text("Allow all cookies")',
@@ -77,88 +77,55 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
         ])
         page.wait_for_timeout(1200)
 
-        # 3) Asegurar que cargó el MAIN (donde vive el grid)
+        # 3) Esperar main y hacer scroll para que cargue el grid
         try:
             page.wait_for_selector("main", timeout=15000)
         except:
-            out["warnings"].append("No apareció <main>. Puede ser bloqueo/captcha o página no cargó bien.")
+            out["warnings"].append("No apareció <main>. Puede ser bloqueo/captcha o carga incompleta.")
 
-        # 4) Scroll para forzar carga del grid
-        _auto_scroll(page, steps=6, pause_ms=900)
+        _auto_scroll(page, steps=8, pause_ms=900)
 
-        # 5) Buscar anchors de posts (más robusto: contains en vez de startswith)
-        #    En muchos perfiles el href trae params, por eso usamos *=
-        selectors = [
-            'main a[href*="/p/"]',
-            'main a[href*="/reel/"]',
-            'a[href*="/p/"]',
-            'a[href*="/reel/"]',
-        ]
+        # 4) SACAR LINKS via JS (más robusto que locators)
+        hrefs = page.evaluate("""
+            () => Array.from(document.querySelectorAll('a'))
+                .map(a => a.getAttribute('href') || a.href)
+                .filter(Boolean)
+        """)
 
         links = []
-        for sel in selectors:
-            try:
-                loc = page.locator(sel)
-                n = loc.count()
-                if n > 0:
-                    for i in range(min(n, max_posts * 10)):
-                        href = loc.nth(i).get_attribute("href")
-                        if not href:
-                            continue
-                        if href.startswith("/"):
-                            url = "https://www.instagram.com" + href
-                        else:
-                            url = href
-                        # limpiar tracking raro
-                        url = url.split("?")[0]
-                        if ("/p/" in url or "/reel/" in url) and url not in links:
-                            links.append(url)
-                        if len(links) >= max_posts:
-                            break
-                if len(links) >= max_posts:
-                    break
-            except:
-                continue
+        for h in hrefs or []:
+            # normalizar
+            if h.startswith("/"):
+                url = "https://www.instagram.com" + h
+            else:
+                url = h
+            url = url.split("?")[0]
+
+            if ("/p/" in url or "/reel/" in url) and url not in links:
+                links.append(url)
+            if len(links) >= max_posts:
+                break
 
         if not links:
-            out["warnings"].append(
-                "No se encontraron posts en el grid. Puede ser: cuenta privada, bloqueo, Instagram cambió la UI o aún falta scroll."
-            )
-            out["warnings"].append(
-                "Tip: abre el perfil en la ventana del bot y confirma que ves el grid sin overlays. Luego vuelve a correr."
-            )
+            out["warnings"].append("Veo el grid pero no pude leer links de posts. IG cambió markup o hay render dinámico raro.")
+            out["warnings"].append("Prueba subir el scroll steps (ahorita son 8) o abre un post manualmente y re-run.")
+            context.close()
+            return out
 
-        # 6) Visitar cada post y sacar caption + imagen
+        # 5) Visitar cada post y extraer caption + imagen (usamos og: para estabilidad)
         for url in links[:max_posts]:
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 page.wait_for_timeout(1800)
 
-                # Caption: Instagram cambia mucho. Intentamos varias rutas.
                 caption = ""
+                # og:description suele traer texto (a veces con user + “likes”, pero sirve)
                 try:
-                    page.wait_for_selector("article", timeout=8000)
+                    caption = page.locator("meta[property='og:description']").get_attribute("content") or ""
+                    caption = _clean(caption)
                 except:
-                    pass
+                    caption = ""
 
-                # Intento 1: primer texto en el header del post
-                for cap_sel in [
-                    "article h1",
-                    "article span",
-                    "meta[property='og:description']",
-                ]:
-                    try:
-                        if cap_sel.startswith("meta"):
-                            caption = page.locator(cap_sel).get_attribute("content") or ""
-                        else:
-                            caption = page.locator(cap_sel).first.inner_text(timeout=2000)
-                        caption = _clean(caption)
-                        if caption:
-                            break
-                    except:
-                        continue
-
-                # Imagen: og:image suele ser más estable que buscar img
                 image_url = ""
                 try:
                     image_url = page.locator("meta[property='og:image']").get_attribute("content") or ""
@@ -183,6 +150,7 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
         context.close()
 
     return out
+
 
 def build_report_json(platform: str, handle_or_url: str, max_posts: int, runtime_s: float, ig_data: dict):
     now = datetime.now(timezone.utc).isoformat()

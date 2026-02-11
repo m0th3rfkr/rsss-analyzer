@@ -1,15 +1,15 @@
 {
   "meta": {
     "platform": "instagram",
-    "handle": "instagram",
-    "generated_at": "2026-02-11T06:53:13.045855+00:00",
-    "run_time_seconds": 16.32
+    "handle": "lacarniceriameatmarkettx",
+    "generated_at": "2026-02-11T08:04:25.210001+00:00",
+    "run_time_seconds": 25.52
   },
   "profiles": [
     {
       "platform": "instagram",
-      "handle": "instagram",
-      "profile_url": "https://www.instagram.com/instagram/",
+      "handle": "lacarniceriameatmarkettx",
+      "profile_url": "https://www.instagram.com/lacarniceriameatmarkettx/",
       "bio": "",
       "website": "",
       "avatar_url": ""
@@ -19,22 +19,7 @@
     "top_posts": []
   },
   "warnings": [
-    "No se encontraron posts en el grid (puede haber bloqueo o cambio de UI)."
-  ],
-  "action_plan": [
-    {
-      "priority": "alta",
-      "title": "3 posts por semana (constancia)",
-      "why": "Instagram premia actividad constante y reduce caídas de alcance",
-      "how": "Calendario simple: Lun=producto, Mié=behind-the-scenes, Vie=promo",
-      "kpi": "3 posts/semana por 4 semanas"
-    },
-    {
-      "priority": "media",
-      "title": "Mejorar captions con CTA",
-      "why": "Más comentarios = más distribución",
-      "how": "Termina captions con pregunta (ej. “¿Cuál corte prefieres?”)",
-      "kpi": "comentarios/post +20%"
-    }
+    "No se encontraron posts en el grid. Puede ser: cuenta privada, bloqueo, necesitas login o Instagram cambió la UI.",
+    "Cero post_links encontrados. Si no estás logueado, loguéate y vuelve a correr."
   ]
 }

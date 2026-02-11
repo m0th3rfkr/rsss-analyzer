@@ -1,20 +1,10 @@
-# Social Report — instagram | instagram
-Generated: 2026-02-11T06:53:13.045855+00:00
-Runtime: 16.32s
+# Social Report — instagram | lacarniceriameatmarkettx
+Generated: 2026-02-11T08:04:25.210001+00:00
+Runtime: 25.52s
 
-## 1) Perfil
-### instagram — instagram
-- URL: https://www.instagram.com/instagram/
+## Warnings
+- No se encontraron posts en el grid. Puede ser: cuenta privada, bloqueo, necesitas login o Instagram cambió la UI.
+- Cero post_links encontrados. Si no estás logueado, loguéate y vuelve a correr.
 
-## 2) Top posts (muestra)
-- (sin posts disponibles)
-## 3) Plan de acción (MVP)
-- **alta** — 3 posts por semana (constancia)
-  - Why: Instagram premia actividad constante y reduce caídas de alcance
-  - How: Calendario simple: Lun=producto, Mié=behind-the-scenes, Vie=promo
-  - KPI: 3 posts/semana por 4 semanas
-
-- **media** — Mejorar captions con CTA
-  - Why: Más comentarios = más distribución
-  - How: Termina captions con pregunta (ej. “¿Cuál corte prefieres?”)
-  - KPI: comentarios/post +20%
+## Top posts
+- (sin posts todavía)

@@ -1,12 +1,13 @@
 {
   "platform": "instagram",
-  "handle_or_url": "instagram",
+  "handle_or_url": "lacarniceriameatmarkettx",
   "max_posts": 12,
   "instagram_public": {
-    "profile_url": "https://www.instagram.com/instagram/",
+    "profile_url": "https://www.instagram.com/lacarniceriameatmarkettx/",
     "posts": [],
     "warnings": [
-      "No se encontraron posts en el grid (puede haber bloqueo o cambio de UI)."
+      "No se encontraron posts en el grid. Puede ser: cuenta privada, bloqueo, necesitas login o Instagram cambió la UI.",
+      "Cero post_links encontrados. Si no estás logueado, loguéate y vuelve a correr."
     ]
   }
 }

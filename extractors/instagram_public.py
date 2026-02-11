@@ -1,21 +1,28 @@
 # extractors/instagram_public.py
 import re
-from typing import List, Dict, Optional
+from typing import Dict
 from playwright.sync_api import sync_playwright
 
 def _clean(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip())
 
-def extract_instagram_profile_posts(profile_url: str, max_posts: int = 12) -> Dict:
+def _normalize_profile_url(profile_url_or_handle: str) -> str:
+    s = (profile_url_or_handle or "").strip()
+    if s.startswith("http"):
+        return s if s.endswith("/") else s + "/"
+    handle = s.lstrip("@").strip().strip("/")
+    return f"https://www.instagram.com/{handle}/"
+
+def extract_instagram_profile_posts(profile_url_or_handle: str, max_posts: int = 12) -> Dict:
     """
-    Extrae posts públicos de un perfil de Instagram (sin login), usando Playwright.
+    Extrae posts de un perfil de Instagram usando Playwright.
+    Modo: usa tu PERFIL REAL de Chrome (sesión logueada).
     Devuelve:
       - profile_url
       - posts: [{post_url, image_url, caption}]
-    Nota: Instagram cambia seguido; esto es MVP y puede requerir ajustes.
+      - warnings: []
     """
-    if not profile_url.startswith("http"):
-        profile_url = f"https://www.instagram.com/{profile_url.strip().lstrip('@').strip('/')}/"
+    profile_url = _normalize_profile_url(profile_url_or_handle)
 
     result = {
         "profile_url": profile_url,
@@ -23,22 +30,28 @@ def extract_instagram_profile_posts(profile_url: str, max_posts: int = 12) -> Di
         "warnings": []
     }
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        ctx = browser.new_context(
-            locale="en-US",
-            user_agent=(
-                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/121.0.0.0 Safari/537.36"
-            )
-        )
-        page = ctx.new_page()
+    chrome_profile_dir = "/Users/tonym/Library/Application Support/Google/Chrome"
 
-        page.goto(profile_url, wait_until="domcontentloaded")
+    with sync_playwright() as p:
+        # 🔥 Usa tu perfil real de Chrome (persistente)
+        context = p.chromium.launch_persistent_context(
+            user_data_dir=chrome_profile_dir,
+            headless=False,
+            locale="en-US",
+            viewport={"width": 1280, "height": 900},
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--start-maximized",
+            ],
+        )
+
+        page = context.new_page()
+
+        # Ir al perfil
+        page.goto(profile_url, wait_until="domcontentloaded", timeout=60000)
         page.wait_for_timeout(2500)
 
-        # Cerrar popups comunes (cookies/login)
+        # Cerrar popups comunes
         for sel in [
             'button:has-text("Only allow essential cookies")',
             'button:has-text("Allow all cookies")',
@@ -51,14 +64,23 @@ def extract_instagram_profile_posts(profile_url: str, max_posts: int = 12) -> Di
             except:
                 pass
 
-        page.wait_for_timeout(1500)
+        page.wait_for_timeout(1200)
 
         # Tomar links de posts desde el grid del perfil
         post_links = []
-        # Instagram suele usar /p/ o /reel/
         anchors = page.locator('a[href^="/p/"], a[href^="/reel/"]')
+
+        # a veces tarda en cargar; reintento suave
+        try:
+            page.wait_for_selector('a[href^="/p/"], a[href^="/reel/"]', timeout=8000)
+        except:
+            pass
+
         count = anchors.count()
-        for i in range(min(count, max_posts * 3)):
+        if count == 0:
+            result["warnings"].append("No se encontraron posts en el grid (posible bloqueo, cuenta privada o UI cambió).")
+
+        for i in range(min(count, max_posts * 5)):
             try:
                 href = anchors.nth(i).get_attribute("href")
                 if href and href.startswith("/"):
@@ -70,25 +92,23 @@ def extract_instagram_profile_posts(profile_url: str, max_posts: int = 12) -> Di
             except:
                 continue
 
-        if not post_links:
-            result["warnings"].append("No se encontraron posts en el grid (puede haber bloqueo o cambio de UI).")
-
         # Visitar cada post para sacar caption + imagen
         for url in post_links[:max_posts]:
             try:
-                page.goto(url, wait_until="domcontentloaded")
-                page.wait_for_timeout(2000)
+                page.goto(url, wait_until="domcontentloaded", timeout=60000)
+                page.wait_for_timeout(1800)
 
-                # Caption: suele estar en el primer article
+                # caption (heurístico)
                 caption = ""
                 try:
-                    # Esto es heurístico; a veces cambia
+                    # intenta agarrar el texto del primer bloque de caption
+                    # Nota: Instagram cambia mucho, esto es MVP
                     caption_el = page.locator("article").locator("h1, span").first
-                    caption = _clean(caption_el.inner_text(timeout=2000))
+                    caption = _clean(caption_el.inner_text(timeout=3000))
                 except:
                     caption = ""
 
-                # Imagen: tomar la primera imagen visible
+                # imagen (primer img visible)
                 image_url = ""
                 try:
                     img = page.locator("article img").first
@@ -104,7 +124,6 @@ def extract_instagram_profile_posts(profile_url: str, max_posts: int = 12) -> Di
             except Exception as e:
                 result["warnings"].append(f"Fallo extrayendo post {url}: {e}")
 
-        ctx.close()
-        browser.close()
+        context.close()
 
     return result

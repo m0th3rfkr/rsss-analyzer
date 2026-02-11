@@ -1,6 +1,12 @@
 {
   "platform": "instagram",
-  "handle_or_url": "https://www.instagram.com/",
+  "handle_or_url": "instagram",
   "max_posts": 12,
-  "note": "MVP skeleton (sin extracción real todavía)."
+  "instagram_public": {
+    "profile_url": "https://www.instagram.com/instagram/",
+    "posts": [],
+    "warnings": [
+      "No se encontraron posts en el grid (puede haber bloqueo o cambio de UI)."
+    ]
+  }
 }

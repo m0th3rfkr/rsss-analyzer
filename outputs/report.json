@@ -1,15 +1,15 @@
 {
   "meta": {
     "platform": "instagram",
-    "handle": "https://www.instagram.com/",
-    "generated_at": "2026-02-11T06:50:41.837798+00:00",
-    "run_time_seconds": 0.0
+    "handle": "instagram",
+    "generated_at": "2026-02-11T06:53:13.045855+00:00",
+    "run_time_seconds": 16.32
   },
   "profiles": [
     {
       "platform": "instagram",
-      "handle": "https://www.instagram.com/",
-      "profile_url": "https://www.instagram.com/",
+      "handle": "instagram",
+      "profile_url": "https://www.instagram.com/instagram/",
       "bio": "",
       "website": "",
       "avatar_url": ""
@@ -18,13 +18,23 @@
   "content": {
     "top_posts": []
   },
+  "warnings": [
+    "No se encontraron posts en el grid (puede haber bloqueo o cambio de UI)."
+  ],
   "action_plan": [
     {
       "priority": "alta",
-      "title": "Define 3 pilares de contenido",
-      "why": "para que el feed sea consistente",
-      "how": "Producto / Promos / Behind-the-scenes",
-      "kpi": "posts por pilar/semana"
+      "title": "3 posts por semana (constancia)",
+      "why": "Instagram premia actividad constante y reduce caídas de alcance",
+      "how": "Calendario simple: Lun=producto, Mié=behind-the-scenes, Vie=promo",
+      "kpi": "3 posts/semana por 4 semanas"
+    },
+    {
+      "priority": "media",
+      "title": "Mejorar captions con CTA",
+      "why": "Más comentarios = más distribución",
+      "how": "Termina captions con pregunta (ej. “¿Cuál corte prefieres?”)",
+      "kpi": "comentarios/post +20%"
     }
   ]
 }

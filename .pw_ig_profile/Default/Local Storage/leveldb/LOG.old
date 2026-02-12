@@ -1,3 +1,5 @@
-2026/02/11-02:04:00.476 354ec4 Reusing MANIFEST /Users/tonym/Code/rsss-analyzer/.pw_ig_profile/Default/Local Storage/leveldb/MANIFEST-000001
-2026/02/11-02:04:00.478 354ec4 Recovering log #3
-2026/02/11-02:04:00.479 354ec4 Reusing old log /Users/tonym/Code/rsss-analyzer/.pw_ig_profile/Default/Local Storage/leveldb/000003.log 
+2026/02/11-23:42:40.823 42abaf Reusing MANIFEST /Users/tonym/Code/rsss-analyzer/.pw_ig_profile/Default/Local Storage/leveldb/MANIFEST-000001
+2026/02/11-23:42:40.827 42abaf Recovering log #4
+2026/02/11-23:42:40.827 42abaf Level-0 table #7: started
+2026/02/11-23:42:40.830 42abaf Level-0 table #7: 18195 bytes OK
+2026/02/11-23:42:40.831 42abaf Delete type=0 #4

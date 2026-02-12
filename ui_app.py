@@ -9,8 +9,13 @@ from pathlib import Path
 import streamlit as st
 from playwright.sync_api import sync_playwright
 
+from analyzers.caption_analyzer import analyze_posts
+
 st.set_page_config(page_title="RSSS Analyzer UI", layout="wide")
 
+# ----------------------------
+# Helpers
+# ----------------------------
 def _clean(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "").strip())
 
@@ -30,18 +35,18 @@ def _try_click(page, selectors):
             pass
     return False
 
-def _auto_scroll(page, steps=6, pause_ms=900):
+def _auto_scroll(page, steps=8, pause_ms=900):
     for _ in range(steps):
         try:
             page.mouse.wheel(0, 1400)
         except:
             pass
         page.wait_for_timeout(pause_ms)
-        
+
 def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile_dir: str) -> dict:
     """
-    Extrae posts del perfil IG usando Playwright con un perfil persistente propio (NO tu Chrome real).
-    Versión robusta: saca links via JS (document.querySelectorAll) en vez de locators frágiles.
+    Extrae posts del perfil IG usando Playwright con un perfil persistente propio.
+    Robusto: obtiene links via JS + og meta para imagen/engagement.
     """
     profile_url = normalize_ig_profile(profile_url_or_handle)
 
@@ -77,7 +82,7 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
         ])
         page.wait_for_timeout(1200)
 
-        # 3) Esperar main y hacer scroll para que cargue el grid
+        # 3) Esperar main y scroll para cargar grid
         try:
             page.wait_for_selector("main", timeout=15000)
         except:
@@ -85,7 +90,7 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
 
         _auto_scroll(page, steps=8, pause_ms=900)
 
-        # 4) SACAR LINKS via JS (más robusto que locators)
+        # 4) Obtener links via JS
         hrefs = page.evaluate("""
             () => Array.from(document.querySelectorAll('a'))
                 .map(a => a.getAttribute('href') || a.href)
@@ -94,37 +99,34 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
 
         links = []
         for h in hrefs or []:
-            # normalizar
             if h.startswith("/"):
                 url = "https://www.instagram.com" + h
             else:
                 url = h
             url = url.split("?")[0]
-
             if ("/p/" in url or "/reel/" in url) and url not in links:
                 links.append(url)
             if len(links) >= max_posts:
                 break
 
         if not links:
-            out["warnings"].append("Veo el grid pero no pude leer links de posts. IG cambió markup o hay render dinámico raro.")
-            out["warnings"].append("Prueba subir el scroll steps (ahorita son 8) o abre un post manualmente y re-run.")
+            out["warnings"].append("Veo el grid pero no pude leer links de posts (IG cambió markup/render).")
+            out["warnings"].append("Tip: aumenta scroll o abre un post manualmente en la ventana del bot y re-run.")
             context.close()
             return out
 
-        # 5) Visitar cada post y extraer caption + imagen (usamos og: para estabilidad)
+        # 5) Visitar posts y extraer caption/imagen/og_description
         for url in links[:max_posts]:
             try:
                 page.goto(url, wait_until="domcontentloaded", timeout=60000)
                 page.wait_for_timeout(1800)
 
-                caption = ""
-                # og:description suele traer texto (a veces con user + “likes”, pero sirve)
+                og_desc = ""
                 try:
-                    caption = page.locator("meta[property='og:description']").get_attribute("content") or ""
-                    caption = _clean(caption)
+                    og_desc = page.locator("meta[property='og:description']").get_attribute("content") or ""
+                    og_desc = _clean(og_desc)
                 except:
-                    caption = ""
+                    og_desc = ""
 
                 image_url = ""
                 try:
@@ -139,10 +141,28 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
                     except:
                         image_url = ""
 
+                caption = ""
+                # Heurístico: a veces og:description trae mucho ruido (likes + username)
+                # Intentamos caption visible
+                try:
+                    page.wait_for_selector("article", timeout=8000)
+                except:
+                    pass
+
+                for cap_sel in ["article h1", "article span"]:
+                    try:
+                        caption = page.locator(cap_sel).first.inner_text(timeout=2000)
+                        caption = _clean(caption)
+                        if caption:
+                            break
+                    except:
+                        continue
+
                 out["posts"].append({
                     "post_url": url,
                     "image_url": image_url,
-                    "caption": caption
+                    "caption": caption,
+                    "og_description": og_desc
                 })
             except Exception as e:
                 out["warnings"].append(f"Fallo extrayendo post {url}: {e}")
@@ -150,7 +170,6 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
         context.close()
 
     return out
-
 
 def build_report_json(platform: str, handle_or_url: str, max_posts: int, runtime_s: float, ig_data: dict):
     now = datetime.now(timezone.utc).isoformat()
@@ -162,13 +181,18 @@ def build_report_json(platform: str, handle_or_url: str, max_posts: int, runtime
         "instagram_public": ig_data
     }
 
+    # Top posts base
     top_posts = []
     for p in ig_data.get("posts", [])[:max_posts]:
         top_posts.append({
-            "post_url": p.get("post_url",""),
-            "image_url": p.get("image_url",""),
-            "caption": p.get("caption",""),
+            "post_url": p.get("post_url", ""),
+            "image_url": p.get("image_url", ""),
+            "caption": p.get("caption", ""),
+            "og_description": p.get("og_description", "")
         })
+
+    # ✅ Analytics (likes est / hashtags / idioma / CTAs / temas)
+    analytics = analyze_posts(top_posts)
 
     report = {
         "meta": {
@@ -181,13 +205,16 @@ def build_report_json(platform: str, handle_or_url: str, max_posts: int, runtime
             {
                 "platform": platform,
                 "handle": handle_or_url,
-                "profile_url": ig_data.get("profile_url",""),
+                "profile_url": ig_data.get("profile_url", ""),
                 "bio": "",
                 "website": "",
                 "avatar_url": ""
             }
         ],
-        "content": {"top_posts": top_posts},
+        "content": {
+            "top_posts": top_posts,
+            "analytics": analytics
+        },
         "warnings": ig_data.get("warnings", [])
     }
 
@@ -195,7 +222,9 @@ def build_report_json(platform: str, handle_or_url: str, max_posts: int, runtime
 
 def report_to_markdown(report: dict) -> str:
     meta = report.get("meta", {})
-    top_posts = report.get("content", {}).get("top_posts", [])
+    content = report.get("content", {})
+    top_posts = content.get("top_posts", [])
+    analytics = content.get("analytics", {})
     warnings = report.get("warnings", [])
 
     lines = []
@@ -203,21 +232,59 @@ def report_to_markdown(report: dict) -> str:
     lines.append(f"Generated: {meta.get('generated_at','')}")
     lines.append(f"Runtime: {meta.get('run_time_seconds','')}s")
     lines.append("")
+
     if warnings:
         lines.append("## Warnings")
         for w in warnings:
             lines.append(f"- {w}")
         lines.append("")
 
+    lines.append("## Analytics (Auto)")
+    lines.append(f"- Avg likes est: {analytics.get('avg_likes_est')}")
+    lines.append(f"- Avg comments est: {analytics.get('avg_comments_est')}")
+    lines.append("")
+
+    # Language ratio
+    lang = analytics.get("language_ratio", {})
+    if lang:
+        lines.append("### Language ratio")
+        for k, v in lang.items():
+            lines.append(f"- {k}: {v}")
+        lines.append("")
+
+    # CTA frequency
+    ctas = analytics.get("cta_frequency", {})
+    if ctas:
+        lines.append("### CTA frequency")
+        for k, v in ctas.items():
+            lines.append(f"- {k}: {v}")
+        lines.append("")
+
+    # Topics
+    topics = analytics.get("dominant_topics", {})
+    if topics:
+        lines.append("### Dominant topics")
+        for k, v in topics.items():
+            lines.append(f"- {k}: {v}")
+        lines.append("")
+
+    # Hashtags
+    tags = analytics.get("hashtag_frequency", {})
+    if tags:
+        lines.append("### Top hashtags")
+        for k, v in tags.items():
+            lines.append(f"- {k}: {v}")
+        lines.append("")
+
     lines.append("## Top posts")
     if not top_posts:
         lines.append("- (sin posts todavía)")
     for post in top_posts:
-        img = post.get("image_url","")
+        img = post.get("image_url", "")
         if img:
             lines.append(f"![]({img})")
         lines.append(f"- URL: {post.get('post_url','')}")
-        cap = post.get("caption","")
+        cap = post.get("caption", "")
         if cap:
             lines.append(f"- Caption: {cap}")
         lines.append("")
@@ -236,11 +303,11 @@ def save_outputs(raw: dict, report: dict, md: str):
 # UI
 # ----------------------------
 st.title("RSSS Analyzer — UI (Instagram Público)")
-st.caption("Mete @handle o URL, elige N posts, y genera Markdown/JSON con imágenes por URL.")
+st.caption("Mete @handle o URL → genera Markdown/JSON con engagement/hashtags/idioma/CTA/temas.")
 
 with st.sidebar:
     st.header("Inputs")
-    handle_or_url = st.text_input("Instagram @handle o URL", value="lacarniceriameatmarkettX".lower())
+    handle_or_url = st.text_input("Instagram @handle o URL", value="instagram")
     max_posts = st.number_input("Posts a extraer", min_value=1, max_value=50, value=12, step=1)
 
     st.divider()
@@ -249,7 +316,7 @@ with st.sidebar:
         "Ruta del perfil (no toques si no quieres)",
         value=str(Path.cwd() / ".pw_ig_profile")
     )
-    st.caption("Tip: la 1ra vez te abre Chrome del bot. Te logueas y ya queda guardado en esa carpeta.")
+    st.caption("Tip: la 1ra vez te abre Chrome del bot. Te logueas y ya queda guardado.")
 
 run = st.button("🚀 Extraer + Generar reporte", type="primary", use_container_width=True)
 
@@ -269,7 +336,7 @@ if run:
     progress.progress(20, text="Abriendo Instagram y cargando grid...")
     ig_data = extract_instagram_public(handle_or_url, int(max_posts), profile_dir)
 
-    progress.progress(85, text="Construyendo reporte...")
+    progress.progress(85, text="Analizando captions/hashtags/CTA/idioma/temas...")
     elapsed = time.time() - t0
     raw, report = build_report_json("instagram", handle_or_url, int(max_posts), round(elapsed, 2), ig_data)
     md = report_to_markdown(report)

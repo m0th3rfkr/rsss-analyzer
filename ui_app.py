@@ -10,6 +10,7 @@ import streamlit as st
 from playwright.sync_api import sync_playwright
 
 from analyzers.caption_analyzer import analyze_posts
+from analyzers.temporal_analyzer import analyze_temporal
 
 st.set_page_config(page_title="RSSS Analyzer UI", layout="wide")
 
@@ -142,8 +143,7 @@ def extract_instagram_public(profile_url_or_handle: str, max_posts: int, profile
                         image_url = ""
 
                 caption = ""
-                # Heurístico: a veces og:description trae mucho ruido (likes + username)
-                # Intentamos caption visible
+                # caption visible (heurístico)
                 try:
                     page.wait_for_selector("article", timeout=8000)
                 except:
@@ -191,8 +191,12 @@ def build_report_json(platform: str, handle_or_url: str, max_posts: int, runtime
             "og_description": p.get("og_description", "")
         })
 
-    # ✅ Analytics (likes est / hashtags / idioma / CTAs / temas)
+    # ✅ Analytics A: caption analyzer (engagement/hashtags/idioma/CTA/temas)
     analytics = analyze_posts(top_posts)
+
+    # ✅ Analytics A: temporal analyzer (fechas/eras/posts por año)
+    temporal = analyze_temporal(analytics.get("posts_annotated", []))
+    analytics["temporal"] = temporal
 
     report = {
         "meta": {
@@ -227,6 +231,8 @@ def report_to_markdown(report: dict) -> str:
     analytics = content.get("analytics", {})
     warnings = report.get("warnings", [])
 
+    temporal = analytics.get("temporal", {})
+
     lines = []
     lines.append(f"# Social Report — {meta.get('platform','')} | {meta.get('handle','')}")
     lines.append(f"Generated: {meta.get('generated_at','')}")
@@ -242,6 +248,21 @@ def report_to_markdown(report: dict) -> str:
     lines.append("## Analytics (Auto)")
     lines.append(f"- Avg likes est: {analytics.get('avg_likes_est')}")
     lines.append(f"- Avg comments est: {analytics.get('avg_comments_est')}")
+    lines.append("")
+
+    # Temporal summary
+    lines.append("### Temporal")
+    lines.append(f"- Min date: {temporal.get('min_date')}")
+    lines.append(f"- Max date: {temporal.get('max_date')}")
+    lines.append(f"- Span days: {temporal.get('span_days')}")
+    eras = temporal.get("era_guess", {})
+    if eras:
+        lines.append(f"- Era buckets: {eras}")
+    ppy = temporal.get("posts_per_year", {})
+    if ppy:
+        lines.append("- Posts per year:")
+        for y, c in ppy.items():
+            lines.append(f"  - {y}: {c}")
     lines.append("")
 
     # Language ratio
@@ -303,11 +324,11 @@ def save_outputs(raw: dict, report: dict, md: str):
 # UI
 # ----------------------------
 st.title("RSSS Analyzer — UI (Instagram Público)")
-st.caption("Mete @handle o URL → genera Markdown/JSON con engagement/hashtags/idioma/CTA/temas.")
+st.caption("Mete @handle o URL → genera Markdown/JSON con engagement/hashtags/idioma/CTA/temas + temporal.")
 
 with st.sidebar:
     st.header("Inputs")
-    handle_or_url = st.text_input("Instagram @handle o URL", value="instagram")
+    handle_or_url = st.text_input("Instagram @handle o URL", value="lostacos1")
     max_posts = st.number_input("Posts a extraer", min_value=1, max_value=50, value=12, step=1)
 
     st.divider()
@@ -336,7 +357,7 @@ if run:
     progress.progress(20, text="Abriendo Instagram y cargando grid...")
     ig_data = extract_instagram_public(handle_or_url, int(max_posts), profile_dir)
 
-    progress.progress(85, text="Analizando captions/hashtags/CTA/idioma/temas...")
+    progress.progress(85, text="Analizando engagement/hashtags/idioma/CTA/temas + temporal...")
     elapsed = time.time() - t0
     raw, report = build_report_json("instagram", handle_or_url, int(max_posts), round(elapsed, 2), ig_data)
     md = report_to_markdown(report)
